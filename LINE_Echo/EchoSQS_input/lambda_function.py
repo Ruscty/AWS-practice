@@ -46,7 +46,7 @@ def validateReq(request):
 
         # エンコーディング(base64)
         signature = base64.b64encode(hash).decode('utf-8')
-        # .decode('utf-8')
+        # .decode('utf-8')は文字列で照合するためいったんデコードしている。
 
         # 署名検証
         if signature == header['X-Line-Signature'] :

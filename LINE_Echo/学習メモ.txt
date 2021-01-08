@@ -1,0 +1,54 @@
+■AWS×LINEAPIのオウム返しBOTを作成
+
+〇環境
+・windows10(基本はAWSでの設定が多め)
+・python3.8.7
+
+使用したAWSサービスは
+・Lambda
+・APIゲートウェイ
+・Amazon SQS
+・Cloud watch(ログ確認用)
+
+流れ
+①LINEからメッセージを送信
+②APIゲートウェイを通じてAPI(Lambda)を実行
+③実行されたAPIによってLINE側にステータス200を通知し、LambdaトリガーによってSQSにメッセージのキュー作成
+④SQSにキューが作成されたことをトリガーにLINEメッセージ出力用のLambdaを実行する。
+⑤LINEにメッセージが出力される
+
+ソースコード以外で設定するポイント
+■LINEAPIの署名検証
+lambda_functionの署名検証は実装するようにLINEがセキュリティ上の警告としている
+
+■非同期処理
+LINEのMessaging APIでは非同期処理が推奨されているためAmazon SQSによる非同期処理を導入
+
+■環境変数3種類
+・Lambdaで設定する
+①LINE_CHANNEL_SECRET (LINE:チャネルシークレット)
+
+②LINE_CHANNEL_ACCESS_TOKEN (LINE:チャネルアクセストークン)
+
+③QUEUE_URL(Amazon SQS:キューのURL)
+
+→環境変数に記載することでトークンやURLなど重要な情報を記載する必要がなくなるのでセキュリティ的な面で安全。
+
+■ロールを設定
+・各種サービスにアクセスできるようにロールを設定する
+
+■LINEAPIのWebhook URLにはAPIゲートウェイのURLを指定してAPIを実行すること
+
+■EchoSQS_outputではMessaging APIを実行するためにpythonのライブラリであるline-bot-sdkをダウンロード(ファイルが欲しいためインストールはしない)
+
+→pip install line-bot-sdk -t .
+　(「-t .」で直下の作業用ファイルに必要なファイルがダウンロードされる)
+
+■その他(バグなど)
+・LINEのWebhook URLの検証と実機での動作が違う(おそらくバグ？)
+HTTPリクエストのheaderを検証と実機で使い分けること
+	実機…「X-Line-Signature」
+	検証…「x-line-signature」
+
+
+
