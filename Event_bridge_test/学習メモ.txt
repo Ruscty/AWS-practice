@@ -1,0 +1,11 @@
+・Eventbridgeの機能はAWSや各種SaaSサービスのイベント発火からスタートする。
+（AWS例：EC2を起動/停止）
+
+・Eventbridgeでイベント発火を探知して次のLambdaなどトリガーで次のイベントなどを発火する。
+
+■今回
+
+EC2停止→（Cloud Watch）→Event Bridge→Lambda→EC2起動
+
+
+起動しない場合はロールが原因の場合があるので、都度ロールポリシーの設定を確認すること。
