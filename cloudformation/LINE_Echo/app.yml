@@ -1,0 +1,739 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: LINE BOT with AWS Service
+
+Parameters: 
+#--------------------------------------------パラメータ--------------------------------------------
+#--------------------------------------------環境変数--------------------------------------------
+  LINECHANNELSECRET:
+    Type: String
+  LINECHANNELACCESSTOKEN:
+    Type: String
+#--------------------------------------------SQSパラメータ--------------------------------------------
+  QUENAME:
+    # Description: "add .fifo on the end"
+    Type: String
+#--------------------------------------------S3パラメータ--------------------------------------------
+  LOGBUCKETNAME:
+    Type: String
+  HTMLBUCKETNAME:
+    Type: String
+#--------------------------------------------DynamoDBパラメータ--------------------------------------------
+  TABLENAME:
+    Type: String
+  # READCAPACITYUNIT:
+  #   Description: default 5
+  #   Type: Number
+  #   Default: 5
+  # WRITECAPACITYUNIT:
+  #   Description: default 5
+  #   Type: Number
+  #   Default: 5
+  BACKUPPOINTINTIME:
+    Description: default disable
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    Default: false
+#--------------------------------------------Lambdaパラメータ--------------------------------------------
+  InputLambdaFunctionName:
+    Type: String
+  OutputLambdaFunctionName:
+    Type: String
+  LIFFLambdaFunctionName:
+    Type: String
+  NotificationLambdaFunctionName:
+    Type: String
+  ErrorLambdaFunctionName:
+    Type: String
+  LogLambdaFunctionName:
+    Type: String
+
+#--------------------------------------------APIGatewayパラメータ--------------------------------------------
+  MessageAPIGatewayName:
+    Type: String
+  MessageAPIGatewayStageName:
+    Type: String
+
+  LIFFAPIGatewayName:
+    Type: String
+  LIFFAPIGatewayStageName:
+    Type: String
+
+  ApiEndpoint:
+    Type: String
+    AllowedValues:
+      - REGIONAL
+      - EDGE
+      - PRIVATE
+    Default: REGIONAL
+  
+  ApiValidate:
+    Type: String
+    Default: x-line-signature
+#--------------------------------------------IAMパラメータ--------------------------------------------
+  logcreaterolepolicyname:
+    Type: String
+    Default: logcreaterolepolicy
+
+  inputrolename:
+    Type: String
+    Default: inputrole
+  inputrolepolicyname:
+    Type: String
+    Default: inputrolepolicy
+
+  outputrolename:
+    Type: String
+    Default: outputrole
+  outputrolepolicyname:
+    Type: String
+    Default: outputrolepolicy
+
+  liffrolename:
+    Type: String
+    Default: liffrole
+  liffrolepolicyname:
+    Type: String
+    Default: liffrolepolicy
+
+  notificationrolename:
+    Type: String
+    Default: notificationrole
+
+  errorrolename:
+    Type: String
+    Default: errorrole
+
+  logrolename:
+    Type: String
+    Default: logrole
+
+  logrolepolicyname:
+    Type: String
+    Default: logrolepolicy
+
+#--------------------------------------------パラメータのソート--------------------------------------------
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      -
+        Label:
+          default: "SQS Configuration"
+        Parameters:
+          - QUENAME
+      -
+        Label:
+          default: "S3 Configuration"
+        Parameters:
+          - LOGBUCKETNAME
+          - HTMLBUCKETNAME
+      -
+        Label:
+          default: "Dynamodb Configuration"
+        Parameters:
+          - TABLENAME
+          # - READCAPACITYUNIT
+          # - WRITECAPACITYUNIT
+          - BACKUPPOINTINTIME
+      -
+        Label:
+          default: "IAM Configuration"
+        Parameters:
+          - logcreaterolepolicyname
+          - inputrolename
+          - inputrolepolicyname
+          - outputrolename
+          - outputrolepolicyname
+          - liffrolename
+          - liffrolepolicyname
+          - notificationrolename
+          - errorrolename
+          - logrolename
+          - logrolepolicyname
+      -
+        Label:
+          default: "API Configuration"
+        Parameters:
+          - LINECHANNELSECRET
+          - LINECHANNELACCESSTOKEN
+          - InputLambdaFunctionName
+          - OutputLambdaFunctionName
+          - LIFFLambdaFunctionName
+          - NotificationLambdaFunctionName
+          - ErrorLambdaFunctionName
+          - LogLambdaFunctionName
+          - MessageAPIGatewayName
+          - MessageAPIGatewayStageName
+          - LIFFAPIGatewayName
+          - LIFFAPIGatewayStageName
+          - ApiEndpoint
+          - ApiValidate
+
+#--------------------------------------------リソース--------------------------------------------
+Resources: 
+  #IAMポリシーlambda共通(log作成用)
+  logcreatepolicyID:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref logcreaterolepolicyname
+      PolicyDocument: 
+        Version: 2012-10-17
+        Statement: 
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda:*
+
+#--------------------------------------------SQS--------------------------------------------
+  sqsID:
+    Type: AWS::SQS::Queue
+    Properties:
+      # FifoQueue: true
+      QueueName: !Ref QUENAME
+      Tags:
+        - Key: management
+          Value: dev
+#--------------------------------------------S3--------------------------------------------
+  #HTML画像用S3
+  htmlbucketID:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'AES256'
+      BucketName: !Ref HTMLBUCKETNAME
+      Tags:
+        - Key: management
+          Value: dev
+      VersioningConfiguration:
+        Status: Enabled
+
+  #ログ用S3
+  logbucketID:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'AES256'
+      BucketName: !Ref LOGBUCKETNAME
+      LifecycleConfiguration:
+        Rules: 
+        - ExpirationInDays: 31
+          Transitions:
+            - TransitionInDays: 30
+              StorageClass: GLACIER
+          Status: Enabled
+      # LoggingConfiguration:
+      #   LoggingConfiguration
+      # MetricsConfigurations:
+      #   - MetricsConfiguration
+      # NotificationConfiguration:
+      #   NotificationConfiguration
+      Tags:
+        - Key: management
+          Value: dev
+      VersioningConfiguration:
+        Status: Enabled
+
+#--------------------------------------------DynamoDB--------------------------------------------
+  dynamodbtableID:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      # テーブルとインデックスのキースキーマを記述する属性
+      AttributeDefinitions:
+        -
+          AttributeName: "userId"
+          AttributeType: "S"
+      # パーティションキー、ソートキーの指定
+      KeySchema:
+        -
+          AttributeName: "userId"
+          KeyType: "HASH"
+      # BillingMode: PROVISIONED
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !Ref BACKUPPOINTINTIME
+      # ProvisionedThroughput:
+      #   ReadCapacityUnits: !Ref READCAPACITYUNIT
+      #   WriteCapacityUnits: !Ref WRITECAPACITYUNIT
+
+      TableName: !Ref TABLENAME
+      Tags:
+        - Key: management
+          Value: dev
+#--------------------------------------------APIGateway1--------------------------------------------
+  #APIGateway
+  messageapigatewayID:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      EndpointConfiguration:
+        Types: 
+          - !Ref ApiEndpoint
+      Name: !Ref MessageAPIGatewayName
+      Tags:
+        - Key: management
+          Value: dev
+  #APIGatewayリソース
+  messageapigatewayresourceID:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref messageapigatewayID
+      ParentId: !GetAtt messageapigatewayID.RootResourceId
+      PathPart: !Ref InputLambdaFunctionName
+
+  # APIGatewayリクエスト検証
+  inputapivalidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties: 
+      Name: !Ref ApiValidate
+      RestApiId: !Ref messageapigatewayID
+      ValidateRequestParameters: true
+
+  #APIGatewayメソッド
+  messageapigatewaymethodID:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref messageapigatewayID
+      ResourceId: !Ref messageapigatewayresourceID
+      RequestValidatorId: !Ref inputapivalidator
+      AuthorizationType: None
+      HttpMethod: POST
+      RequestParameters:
+        method.request.header.x-line-signature: true
+      Integration: 
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        # RequestParameters: 
+        #   integration.request.header.x-line-signature: method.request.header.x-line-signature
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${InputLambdaFunctionName}/invocations"
+
+  #クライアント証明書
+  inputClientCertificateID:
+    Type: 'AWS::ApiGateway::ClientCertificate'
+    Properties:
+      Description: A client certificate
+
+  messageapigatewaystageID:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      ClientCertificateId: !Ref inputClientCertificateID
+      DeploymentId: !Ref messageapigatewaydeployID
+      RestApiId: !Ref messageapigatewayID
+      StageName: !Ref MessageAPIGatewayStageName
+      Tags:
+        - Key: management
+          Value: dev
+    DependsOn:
+      - messageapigatewaymethodID
+
+  #デプロイ
+  messageapigatewaydeployID:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref messageapigatewayID
+    DependsOn:
+      - messageapigatewaymethodID
+
+#--------------------------------------------Lambda1--------------------------------------------
+  #IAMポリシー
+  inputlambdapolicyID:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref inputrolepolicyname
+      PolicyDocument:         
+        Version: 2012-10-17
+        Statement: 
+          - Action: sqs:*
+            Effect: Allow
+            Resource: !GetAtt sqsID.Arn
+  #IAMロール
+  inputlambdaroleID:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref inputlambdapolicyID
+        - !Ref logcreatepolicyID
+      RoleName: !Ref inputrolename
+      Tags:
+        - Key: management
+          Value: dev
+
+  #lambda本体
+  inputlambdaID:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: input message
+      FunctionName: !Ref InputLambdaFunctionName
+      Handler: input.handler
+      MemorySize: 128
+      Role: !GetAtt inputlambdaroleID.Arn
+      Runtime: nodejs14.x
+
+      #環境変数の設定
+      Environment:
+        Variables:
+          LINE_CHANNEL_SECRET: !Ref LINECHANNELSECRET
+          LINE_CHANNEL_ACCESS_TOKEN: !Ref LINECHANNELACCESSTOKEN
+          QUEUE_URL: !Ref sqsID
+      Code:
+        S3Bucket: S3BUCKET #←自分のS3のバケットを指定すること　※以下同様
+        S3Key: nodejs/input.zip #←自分のS3のオブジェクトを指定すること　※以下同様
+
+      Tags:
+        - Key: management
+          Value: dev
+
+  #APIGatewayのLambda関数呼び出し許可
+  inputlambdapermissionID:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !Ref InputLambdaFunctionName
+      Principal: "apigateway.amazonaws.com"
+    DependsOn: inputlambdaID
+
+#--------------------------------------------Lambda2--------------------------------------------
+  #IAMポリシー
+  outputlambdapolicyID:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref outputrolepolicyname
+      PolicyDocument: 
+        Version: 2012-10-17
+        Statement: 
+          - Action: dynamodb:*
+            Effect: Allow
+            Resource: !GetAtt dynamodbtableID.Arn
+  #IAMロール
+  outputlambdaroleID:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+        - !Ref outputlambdapolicyID
+        - !Ref logcreatepolicyID
+      RoleName: !Ref outputrolename
+      Tags:
+        - Key: management
+          Value: dev
+  #lambda本体
+  outputlambdaID:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: output message
+      FunctionName: !Ref OutputLambdaFunctionName
+      Handler: output.handler
+      MemorySize: 128
+      Role: !GetAtt outputlambdaroleID.Arn
+      Runtime: nodejs14.x
+
+
+      #環境変数の設定
+      Environment:
+        Variables:
+          LINE_CHANNEL_SECRET: !Ref LINECHANNELSECRET
+          LINE_CHANNEL_ACCESS_TOKEN: !Ref LINECHANNELACCESSTOKEN
+          QUEUE_URL: !Ref sqsID
+      Code:
+        S3Bucket: S3BUCKET
+        S3Key: nodejs/output.zip
+      Tags:
+        - Key: management
+          Value: dev
+  #SQSのトリガーを設定
+  sqstriggerID:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      Enabled: true
+      EventSourceArn: !GetAtt sqsID.Arn
+      FunctionName: !Ref OutputLambdaFunctionName
+    DependsOn:
+      - outputlambdaID
+
+#--------------------------------------------Lambda3--------------------------------------------
+  #IAMポリシー
+  lifflambdapolicyID:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref liffrolepolicyname
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement: 
+          - Effect: Allow
+            Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:ConditionCheckItem
+              - dynamodb:DescribeContributorInsights
+              - dynamodb:Scan
+              - dynamodb:ListTagsOfResource
+              - dynamodb:Query
+              - dynamodb:DescribeStream
+              - dynamodb:DescribeTimeToLive
+              - dynamodb:ListStreams
+              - dynamodb:DescribeGlobalTableSettings
+              - dynamodb:DescribeReservedCapacityOfferings
+              - dynamodb:PartiQLSelect
+              - dynamodb:DescribeTable
+              - dynamodb:GetShardIterator
+              - dynamodb:DescribeGlobalTable
+              - dynamodb:DescribeReservedCapacity
+              - dynamodb:GetItem
+              - dynamodb:DescribeContinuousBackups
+              - dynamodb:DescribeExport
+              - dynamodb:DescribeKinesisStreamingDestination
+              - dynamodb:DescribeBackup
+              - dynamodb:DescribeLimits
+              - dynamodb:GetRecords
+              - dynamodb:DescribeTableReplicaAutoScaling
+            Resource: !GetAtt dynamodbtableID.Arn
+          - Effect: Allow
+            Action:
+              - s3:GetAccessPoint
+              - s3:GetLifecycleConfiguration
+              - s3:GetBucketTagging
+              - s3:GetInventoryConfiguration
+              - s3:GetObjectVersionTagging
+              - s3:GetBucketLogging
+              - s3:GetAccelerateConfiguration
+              - s3:GetBucketPolicy
+              - s3:GetStorageLensConfigurationTagging
+              - s3:GetObjectVersionTorrent
+              - s3:GetObjectAcl
+              - s3:GetEncryptionConfiguration
+              - s3:GetBucketObjectLockConfiguration
+              - s3:GetIntelligentTieringConfiguration
+              - s3:GetBucketRequestPayment
+              - s3:GetAccessPointPolicyStatus
+              - s3:GetObjectVersionAcl
+              - s3:GetObjectTagging
+              - s3:GetMetricsConfiguration
+              - s3:GetBucketOwnershipControls
+              - s3:GetBucketPublicAccessBlock
+              - s3:GetBucketPolicyStatus
+              - s3:GetObjectRetention
+              - s3:GetBucketWebsite
+              - s3:GetJobTagging
+              - s3:ListAccessPoints
+              - s3:GetBucketVersioning
+              - s3:GetBucketAcl
+              - s3:GetObjectLegalHold
+              - s3:GetBucketNotification
+              - s3:GetReplicationConfiguration
+              - s3:GetObject
+              - s3:GetStorageLensConfiguration
+              - s3:GetObjectTorrent
+              - s3:GetAccountPublicAccessBlock
+              - s3:DescribeJob
+              - s3:GetBucketCORS
+              - s3:GetAnalyticsConfiguration
+              - s3:GetObjectVersionForReplication
+              - s3:GetBucketLocation
+              - s3:GetAccessPointPolicy
+              - s3:GetObjectVersion
+              - s3:GetStorageLensDashboard
+            Resource: !GetAtt htmlbucketID.Arn
+
+  #IAMロール
+  lifflambdaroleID:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref lifflambdapolicyID
+        - !Ref logcreatepolicyID
+      RoleName: !Ref liffrolename
+      Tags:
+        - Key: management
+          Value: dev
+
+  #lambda本体
+  lifflambdaID:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: liff
+      FunctionName: !Ref LIFFLambdaFunctionName
+      Handler: liff.handler
+      MemorySize: 128
+      Role: !GetAtt lifflambdaroleID.Arn
+      Runtime: nodejs14.x
+
+      #環境変数の設定
+      Environment:
+        Variables:
+          LINE_CHANNEL_SECRET: !Ref LINECHANNELSECRET
+      Code:
+        S3Bucket: S3BUCKET
+        S3Key: nodejs/liff.zip
+
+      Tags:
+        - Key: management
+          Value: dev
+
+  #APIGatewayのLambda関数呼び出し許可
+  lifflambdapermissionID:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !Ref LIFFLambdaFunctionName
+      Principal: "apigateway.amazonaws.com"
+    DependsOn: lifflambdaID
+
+#--------------------------------------------Lambda4--------------------------------------------
+  #IAMロール
+  notificationlambdaroleID:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        - !Ref logcreatepolicyID
+      RoleName: !Ref notificationrolename
+      Tags:
+        - Key: management
+          Value: dev
+
+  #lambda本体
+  notificationlambdaID:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: notification
+      FunctionName: !Ref NotificationLambdaFunctionName
+      Handler: notification.handler
+      MemorySize: 128
+      Role: !GetAtt notificationlambdaroleID.Arn
+      Runtime: nodejs14.x
+      Code:
+        S3Bucket: S3BUCKET
+        S3Key: nodejs/notification.zip
+      Tags:
+        - Key: management
+          Value: dev
+
+#--------------------------------------------Lambda5--------------------------------------------
+  #IAMロール
+  errorlambdaroleID:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - !Ref logcreatepolicyID
+      RoleName: !Ref errorrolename
+      Tags:
+        - Key: management
+          Value: dev
+
+  #lambda本体
+  errorlambdaID:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: error function
+      FunctionName: !Ref ErrorLambdaFunctionName
+      Handler: error.handler
+      MemorySize: 128
+      Role: !GetAtt errorlambdaroleID.Arn
+      Runtime: nodejs14.x
+      Code:
+        S3Bucket: S3BUCKET
+        S3Key: nodejs/error.zip
+      Tags:
+        - Key: management
+          Value: dev
+
+#--------------------------------------------Lambda6--------------------------------------------
+  #IAMポリシー
+  loglambdapolicyID:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref logrolepolicyname
+      PolicyDocument: 
+        Version: 2012-10-17
+        Statement: 
+          - Action: s3:*
+            Effect: Allow
+            Resource: !GetAtt logbucketID.Arn
+  #IAMロール
+  loglambdaroleID:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref loglambdapolicyID
+        - !Ref logcreatepolicyID
+      RoleName: !Ref logrolename
+      Tags:
+        - Key: management
+          Value: dev
+  #lambda本体
+  loglambdaID:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: put log function
+      FunctionName: !Ref LogLambdaFunctionName
+      Handler: log.handler
+      MemorySize: 128
+      Role: !GetAtt loglambdaroleID.Arn
+      Runtime: nodejs14.x
+      Code:
+        S3Bucket: S3BUCKET
+        S3Key: nodejs/log.zip
+      Tags:
+        - Key: management
+          Value: dev
+
+  
