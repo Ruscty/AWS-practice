@@ -157,6 +157,7 @@ Metadata:
         Label:
           default: "API Configuration"
         Parameters:
+          - WEBACLNAME
           - LINECHANNELSECRET
           - LINECHANNELACCESSTOKEN
           - InputLambdaFunctionName
@@ -242,7 +243,7 @@ Resources:
         - Name: LINERule
           Priority: 4
           Action:
-              Block: {}
+              Count: {}
           VisibilityConfig:
               SampledRequestsEnabled: true
               CloudWatchMetricsEnabled: true
@@ -263,6 +264,15 @@ Resources:
                               SearchString: LIFF
                               TextTransformations: [{Type: NONE, Priority: 0}]
 
+      Scope: REGIONAL
+      Tags:
+        - Key: management
+          Value: dev
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: WAFWebAclMetric
+
 
   messagewafwebaclassociationID:
     Type: AWS::WAFv2::WebACLAssociation
@@ -273,7 +283,7 @@ Resources:
   liffwafwebaclassociationID:
     Type: AWS::WAFv2::WebACLAssociation
     Properties:
-      ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/restapis/${LIFFAPIGatewayName}/stages/${LIFFAPIGatewayStageName}
+      ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/restapis/${liffapigatewayID}/stages/${LIFFAPIGatewayStageName}
       WebACLArn: !GetAtt wafwebaclID.Arn
 #--------------------------------------------IAMポリシーLambda共通--------------------------------------------                              
   #IAMポリシーlambda共通(log作成用)
@@ -315,6 +325,11 @@ Resources:
           Value: dev
       VersioningConfiguration:
         Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
 
   #ログ用S3
   logbucketID:
@@ -332,6 +347,13 @@ Resources:
             - TransitionInDays: 30
               StorageClass: GLACIER
           Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+
       # LoggingConfiguration:
       #   LoggingConfiguration
       # MetricsConfigurations:
@@ -598,12 +620,12 @@ Resources:
       PathPart: !Ref LIFFLambdaFunctionName
 
   # APIGatewayリクエスト検証
-  liffapivalidator:
-    Type: AWS::ApiGateway::RequestValidator
-    Properties: 
-      Name: !Ref ApiValidate
-      RestApiId: !Ref messageapigatewayID
-      ValidateRequestParameters: true
+  # liffapivalidator:
+  #   Type: AWS::ApiGateway::RequestValidator
+  #   Properties: 
+  #     Name: !Ref ApiValidate
+  #     RestApiId: !Ref liffapigatewayID
+  #     ValidateRequestParameters: true
 
   #APIGatewayメソッド
   liffapigatewaymethodID:
@@ -611,7 +633,7 @@ Resources:
     Properties:
       RestApiId: !Ref liffapigatewayID
       ResourceId: !Ref liffapigatewayresourceID
-      RequestValidatorId: !Ref liffapivalidator
+      # RequestValidatorId: !Ref liffapivalidator
       AuthorizationType: None
       HttpMethod: GET
       RequestParameters:
@@ -646,7 +668,7 @@ Resources:
   liffapigatewaydeployID:
     Type: AWS::ApiGateway::Deployment
     Properties:
-      RestApiId: !Ref messageapigatewayID
+      RestApiId: !Ref liffapigatewayID
     DependsOn:
       - liffapigatewaymethodID
 
