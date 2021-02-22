@@ -4,6 +4,8 @@ Description: api resource APIGateway and Lambda
 Parameters: 
 #--------------------------------------------パラメータ--------------------------------------------
 #--------------------------------------------環境変数--------------------------------------------
+  WEBACLNAME:
+    Type: String
   LINECHANNELSECRET:
     Type: String
   LINECHANNELACCESSTOKEN:
@@ -260,6 +262,19 @@ Resources:
                               PositionalConstraint: CONTAINS
                               SearchString: LIFF
                               TextTransformations: [{Type: NONE, Priority: 0}]
+
+
+  messagewafwebaclassociationID:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/restapis/${messageapigatewayID}/stages/${MessageAPIGatewayStageName}
+      WebACLArn: !GetAtt wafwebaclID.Arn
+
+  liffwafwebaclassociationID:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/restapis/${LIFFAPIGatewayName}/stages/${LIFFAPIGatewayStageName}
+      WebACLArn: !GetAtt wafwebaclID.Arn
 #--------------------------------------------IAMポリシーLambda共通--------------------------------------------                              
   #IAMポリシーlambda共通(log作成用)
   logcreatepolicyID:
@@ -561,6 +576,79 @@ Resources:
       FunctionName: !Ref OutputLambdaFunctionName
     DependsOn:
       - outputlambdaID
+
+#--------------------------------------------APIGateway2--------------------------------------------
+  #APIGateway
+  liffapigatewayID:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      EndpointConfiguration:
+        Types: 
+          - !Ref ApiEndpoint
+      Name: !Ref LIFFAPIGatewayName
+      Tags:
+        - Key: management
+          Value: dev
+  #APIGatewayリソース
+  liffapigatewayresourceID:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref liffapigatewayID
+      ParentId: !GetAtt liffapigatewayID.RootResourceId
+      PathPart: !Ref LIFFLambdaFunctionName
+
+  # APIGatewayリクエスト検証
+  liffapivalidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties: 
+      Name: !Ref ApiValidate
+      RestApiId: !Ref messageapigatewayID
+      ValidateRequestParameters: true
+
+  #APIGatewayメソッド
+  liffapigatewaymethodID:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref liffapigatewayID
+      ResourceId: !Ref liffapigatewayresourceID
+      RequestValidatorId: !Ref liffapivalidator
+      AuthorizationType: None
+      HttpMethod: GET
+      RequestParameters:
+        method.request.header.x-line-signature: true
+      Integration: 
+        Type: AWS_PROXY
+        IntegrationHttpMethod: GET
+        # RequestParameters: 
+        #   integration.request.header.x-line-signature: method.request.header.x-line-signature
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${LIFFLambdaFunctionName}/invocations"
+
+  #クライアント証明書
+  liffClientCertificateID:
+    Type: 'AWS::ApiGateway::ClientCertificate'
+    Properties:
+      Description: A client certificate
+
+  liffapigatewaystageID:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      ClientCertificateId: !Ref liffClientCertificateID
+      DeploymentId: !Ref liffapigatewaydeployID
+      RestApiId: !Ref liffapigatewayID
+      StageName: !Ref LIFFAPIGatewayStageName
+      Tags:
+        - Key: management
+          Value: dev
+    DependsOn:
+      - liffapigatewaymethodID
+
+  #デプロイ
+  liffapigatewaydeployID:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref messageapigatewayID
+    DependsOn:
+      - liffapigatewaymethodID
 
 #--------------------------------------------Lambda3--------------------------------------------
   #IAMポリシー
