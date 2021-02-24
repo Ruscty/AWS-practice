@@ -231,7 +231,7 @@ Resources:
       DisplayName: Error notification
       # KmsMasterKeyId: String
       # Subscription:
-      #   - Endpoint: zicksick0706@outlook.jp
+      #   - Endpoint: XXXX@XXXX.com
       #     Protocol: email
       # Tags:
       #   - Tag
@@ -241,7 +241,7 @@ Resources:
     Type: AWS::SNS::Subscription
     Properties:
       # DeliveryPolicy: Json
-      Endpoint: zicksick0706@outlook.jp
+      Endpoint: XXXX@XXXX.com
       # FilterPolicy: Json
       Protocol: email
       # RawMessageDelivery: Boolean
