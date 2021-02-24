@@ -21,7 +21,7 @@ Parameters:
   QUEUENAME:
     Description: "add .fifo on the end"
     Type: String
-    Default: sqstest
+    Default: sqstest.fifo
 #--------------------------------------------S3パラメータ--------------------------------------------
   LOGBUCKETNAME:
     Type: String
@@ -100,7 +100,7 @@ Parameters:
 #--------------------------------------------IAMパラメータ--------------------------------------------
   configrolename:
     Type: String
-    Default: configrolename
+    Default: configrolenametest
   logcreaterolepolicyname:
     Type: String
     Default: logcreaterolepolicy
@@ -443,6 +443,43 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
+  configbucketpolicyID:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CONFIGBUCKETNAME
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+            -
+                Sid: AWSConfigBucketPermissionsCheck
+                Effect: Allow
+                Principal:
+                    Service:
+                        - config.amazonaws.com
+                Action: 's3:GetBucketAcl'
+                Resource: !Sub arn:aws:s3:::${CONFIGBUCKETNAME}
+            -
+                Sid: AWSConfigBucketExistenceCheck
+                Effect: Allow
+                Principal:
+                    Service:
+                        - config.amazonaws.com
+                Action: 's3:ListBucket'
+                Resource: !Sub arn:aws:s3:::${CONFIGBUCKETNAME}
+            -
+                Sid: AWSConfigBucketDelivery
+                Effect: Allow
+                Principal:
+                    Service:
+                        - config.amazonaws.com
+                Action: 's3:PutObject'
+                Resource: !Sub arn:aws:s3:::${CONFIGBUCKETNAME}/AWSLogs/${AWS::AccountId}/Config/*
+                Condition:
+                    StringEquals:
+                        's3:x-amz-acl': bucket-owner-full-control
+    DependsOn:
+      - configbucketID
+
 #--------------------------------------------DynamoDB--------------------------------------------
   dynamodbtableID:
     Type: AWS::DynamoDB::Table
@@ -613,6 +650,13 @@ Resources:
       Principal: "apigateway.amazonaws.com"
     DependsOn: inputlambdaID
 
+  inputlambdaloggroupID:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      # KmsKeyId: String
+      LogGroupName: !Sub /aws/lambda/${InputLambdaFunctionName}
+      RetentionInDays: 7
+
 #--------------------------------------------Lambda2--------------------------------------------
   #IAMポリシー
   outputlambdapolicyID:
@@ -679,6 +723,12 @@ Resources:
       FunctionName: !Ref OutputLambdaFunctionName
     DependsOn:
       - outputlambdaID
+  outputlambdaloggroupID:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      # KmsKeyId: String
+      LogGroupName: !Sub /aws/lambda/${OutputLambdaFunctionName}
+      RetentionInDays: 7
 
 #--------------------------------------------APIGateway2--------------------------------------------
   #APIGateway
@@ -893,6 +943,13 @@ Resources:
       Principal: "apigateway.amazonaws.com"
     DependsOn: lifflambdaID
 
+  lifflambdaloggroupID:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      # KmsKeyId: String
+      LogGroupName: !Sub /aws/lambda/${LIFFLambdaFunctionName}
+      RetentionInDays: 7
+
 #--------------------------------------------Lambda4--------------------------------------------
   #IAMロール
   notificationlambdaroleID:
@@ -953,46 +1010,60 @@ Resources:
       SourceArn: 
         !GetAtt ScheduledRuleID.Arn
 
+  notificationlambdaloggroupID:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      # KmsKeyId: String
+      LogGroupName: !Sub /aws/lambda/${NotificationLambdaFunctionName}
+      RetentionInDays: 7
+
+#--------------------------------------------Lambda6(error用)--------------------------------------------
+  # #IAMロール
+  # errorlambdaroleID:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument: 
+  #       Version: 2012-10-17
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service:
+  #             - lambda.amazonaws.com
+  #           Action:
+  #             - sts:AssumeRole
+  #     ManagedPolicyArns:
+  #       - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+  #       - !Ref logcreatepolicyID
+  #     RoleName: !Ref errorrolename
+  #     Tags:
+  #       - Key: management
+  #         Value: dev
+
+  # #lambda本体
+  # errorlambdaID:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     Description: error function
+  #     FunctionName: !Ref ErrorLambdaFunctionName
+  #     Handler: error.handler
+  #     MemorySize: 128
+  #     Role: !GetAtt errorlambdaroleID.Arn
+  #     Runtime: nodejs14.x
+  #     Code:
+  #       S3Bucket: XXXX-bucket
+  #       S3Key: XXXX/XXXX.zip
+  #     Tags:
+  #       - Key: management
+  #         Value: dev
+
+  # lifflambdaloggroupID:
+  #   Type: AWS::Logs::LogGroup
+  #   Properties:
+  #     # KmsKeyId: String
+  #     LogGroupName: !Sub /aws/lambda/${ErrorLambdaFunctionName}
+  #     RetentionInDays: 7
+
 #--------------------------------------------Lambda5--------------------------------------------
-  #IAMロール
-  errorlambdaroleID:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument: 
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-              - lambda.amazonaws.com
-            Action:
-              - sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
-        - !Ref logcreatepolicyID
-      RoleName: !Ref errorrolename
-      Tags:
-        - Key: management
-          Value: dev
-
-  #lambda本体
-  errorlambdaID:
-    Type: AWS::Lambda::Function
-    Properties:
-      Description: error function
-      FunctionName: !Ref ErrorLambdaFunctionName
-      Handler: error.handler
-      MemorySize: 128
-      Role: !GetAtt errorlambdaroleID.Arn
-      Runtime: nodejs14.x
-      Code:
-        S3Bucket: XXXX-bucket
-        S3Key: XXXX/XXXX.zip
-      Tags:
-        - Key: management
-          Value: dev
-
-#--------------------------------------------Lambda6--------------------------------------------
   #IAMポリシー
   loglambdapolicyID:
     Type: AWS::IAM::ManagedPolicy
@@ -1040,6 +1111,13 @@ Resources:
       Tags:
         - Key: management
           Value: dev
+
+  lifflambdaloggroupID:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      # KmsKeyId: String
+      LogGroupName: !Sub /aws/lambda/${LogLambdaFunctionName}
+      RetentionInDays: 7
 #--------------------------------------------cloudwatch(Alarm)--------------------------------------------
 # ------------------------------------------------------APIGateway(alarm)-----------------------------------------------------
   AlarmMessageApi5XXError:
@@ -1318,55 +1396,56 @@ Resources:
       TopicArn: !Ref SNSTopicErrorID
 
 #--------------------------------------------Config(本番稼働させる)--------------------------------------------
-  # #IAMロール
-  # configroleID:
-  #   Type: AWS::IAM::Role
-  #   Properties:
-  #     AssumeRolePolicyDocument: 
-  #       Version: 2012-10-17
-  #       Statement:
-  #         - Effect: Allow
-  #           Principal:
-  #             Service:
-  #             - config.amazonaws.com
-  #           Action:
-  #             - sts:AssumeRole
-  #     ManagedPolicyArns:
-  #       - arn:aws:iam::aws:policy/service-role/AWSConfigRole
-  #     RoleName: !Ref configrolename
-  #     Tags:
-  #       - Key: management
-  #         Value: dev
+  #IAMロール
+  configroleID:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - config.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSConfigRole
+      RoleName: !Ref configrolename
+      Tags:
+        - Key: management
+          Value: dev
 
-  # ConfigrecorderID:
-  #   Type: AWS::Config::ConfigurationRecorder
-  #   Properties:
-  #     Name: String
-  #     RecordingGroup:
-  #       - AWS::EC2::Volume
-  #       - AWS::ApiGateway::RestApi
-  #       - AWS::ApiGateway::Stage
-  #       - AWS::CloudWatch::Alarm
-  #       - AWS::DynamoDB::Table
-  #       - AWS::SNS::Topic
-  #       - AWS::SQS::Queue
-  #       - AWS::S3::Bucket
-  #       - AWS::S3::AccountPublicAccessBlock
-  #       - AWS::ACM::Certificate
-  #       - AWS::CloudFormation::Stack
-  #       - AWS::CloudTrail::Trail
-  #       - AWS::IAM::Role
-  #       - AWS::IAM::Policy
-  #       - AWS::KMS::Key
-  #       - AWS::Lambda::Function
-  #       - AWS::WAFv2::WebACL
-  #     RoleARN: !GetAtt configroleID.Arn
+  ConfigrecorderID:
+    Type: AWS::Config::ConfigurationRecorder
+    Properties:
+      Name: String
+      RecordingGroup:
+        ResourceTypes: 
+          - AWS::EC2::Volume
+          - AWS::ApiGateway::RestApi
+          - AWS::ApiGateway::Stage
+          - AWS::CloudWatch::Alarm
+          - AWS::DynamoDB::Table
+          - AWS::SNS::Topic
+          - AWS::SQS::Queue
+          - AWS::S3::Bucket
+          - AWS::S3::AccountPublicAccessBlock
+          - AWS::ACM::Certificate
+          - AWS::CloudFormation::Stack
+          - AWS::CloudTrail::Trail
+          - AWS::IAM::Role
+          - AWS::IAM::Policy
+          - AWS::KMS::Key
+          - AWS::Lambda::Function
+          - AWS::WAFv2::WebACL
+      RoleARN: !GetAtt configroleID.Arn
 
-  # ConfigdeliveryID:
-  #   Type: AWS::Config::DeliveryChannel
-  #   Properties:
-  #     ConfigSnapshotDeliveryProperties:
-  #       DeliveryFrequency: "TwentyFour_Hours"
-  #     S3BucketName: !Ref CONFIGBUCKETNAME
-  #     # SnsTopicARN: String #必要に応じて設定
+  ConfigdeliveryID:
+    Type: AWS::Config::DeliveryChannel
+    Properties:
+      ConfigSnapshotDeliveryProperties:
+        DeliveryFrequency: "TwentyFour_Hours"
+      S3BucketName: !Ref CONFIGBUCKETNAME
+      # SnsTopicARN: String #必要に応じて設定
 
