@@ -1,0 +1,251 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  hostedzoneID:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      HostedZoneConfig: 
+        Comment: 'My hosted zone for ruscty.tk'
+      Name: ruscty.tk
+
+# ------------------------------------------------------APIGateway(alarm)-----------------------------------------------------
+  AlarmMessageApi5XXError:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: Api5XXError
+      Namespace: AWS/ApiGateway
+      Dimensions:
+        - Name: ApiName #API名
+          Value: input-API 
+        - Name: Stage #ステージ名
+          Value: default
+      MetricName: 5XXError
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+  AlarmMessageApi4XXError:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: Api4XXError
+      Namespace: AWS/ApiGateway
+      Dimensions:
+        - Name: ApiName #API名
+          Value: input-API
+        - Name: Stage #ステージ名
+          Value: default
+      MetricName: 4XXError
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+  # AlarmMessageLatencyError:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmName: LatencyError
+  #     Namespace: AWS/ApiGateway
+  #     Dimensions:
+  #       - Name: ApiName #API名
+  #         Value: input-API 
+  #       - Name: Stage #ステージ名
+  #         Value: default
+  #     MetricName: Latency
+  #     ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+  #     Period: 60  # 期間[s]
+  #     EvaluationPeriods: 1  # 閾値を超えた回数
+  #     Statistic: Maximum  # 最大
+  #     Threshold: 1  # 閾値
+  #     AlarmActions:
+  #       - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+# ------------------------------------------------------DynamoDB(alarm)-----------------------------------------------------
+  DynamoDBGSISystemErrorAlarmID:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: 'DynamoDBGSISystemErrorAlarm'
+      AlarmDescription: 'Alarm when GSI System Error exceed 2% of total number of read requests'
+      AlarmActions:
+        - !Ref SNSTopicErrorID
+      Metrics:
+        - Id: e1
+          Expression: 'm1/(m2+m3) * 100'
+          Label: GSISystemError
+        - Id: m1
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: SystemErrors
+              Dimensions:
+                - Name: TableName
+                  Value: test
+            Period: 60
+            Stat: 'SampleCount'
+            Unit: 'Count'
+          ReturnData: False
+        - Id: m2
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: ConsumedReadCapacityUnits
+              Dimensions:
+                - Name: TableName
+                  Value: test
+            Period: 60
+            Stat: SampleCount
+            Unit: Count
+          ReturnData: False
+        - Id: m3
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: ConsumedWriteCapacityUnits
+              Dimensions:
+                - Name: TableName
+                  Value: test
+            Period: 60
+            Stat: SampleCount
+            Unit: Count
+          ReturnData: False
+      EvaluationPeriods: 2
+      Threshold: 2.0
+      ComparisonOperator: GreaterThanThreshold
+
+
+  DynamoDBGSIUserErrorAlarmID:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: 'DynamoDBGSIUserErrorAlarm'
+      AlarmDescription: 'Alarm when GSI User Error exceed 2% of total number of read requests'
+      AlarmActions:
+        - !Ref SNSTopicErrorID
+      Metrics:
+        - Id: e1
+          Expression: 'm1/(m2+m3) * 100'
+          Label: GSISystemError
+        - Id: m1
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: UserErrors
+              Dimensions:
+                - Name: TableName
+                  Value: test
+            Period: 60
+            Stat: 'SampleCount'
+            Unit: 'Count'
+          ReturnData: False
+        - Id: m2
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: ConsumedReadCapacityUnits
+              Dimensions:
+                - Name: TableName
+                  Value: test
+            Period: 60
+            Stat: SampleCount
+            Unit: Count
+          ReturnData: False
+        - Id: m3
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: ConsumedWriteCapacityUnits
+              Dimensions:
+                - Name: TableName
+                  Value: test
+            Period: 60
+            Stat: SampleCount
+            Unit: Count
+          ReturnData: False
+      EvaluationPeriods: 2
+      Threshold: 2.0
+      ComparisonOperator: GreaterThanThreshold
+# ------------------------------------------------------S3(alarm)-----------------------------------------------------
+  S34XXErrorsID:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: S3 4xxErrors
+      Namespace: AWS/S3
+      Dimensions:
+        - Name: BucketName #バケット名
+          Value: ruscty-bucket-html
+        - Name:  FilterId #フィルターID
+          Value: HtmlBucketID
+      MetricName: 4xxErrors
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+  S35XXErrorsID:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: S3 5xxErrors
+      Namespace: AWS/S3
+      Dimensions:
+        - Name: BucketName #バケット名
+          Value: ruscty-bucket-html
+        - Name:  FilterId #フィルターID
+          Value: HtmlBucketID
+      MetricName: 5xxErrors
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+# ------------------------------------------------------SQS(alarm)-----------------------------------------------------
+  AlarmSQSError:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: SQSError
+      Namespace: AWS/SQS
+      Dimensions:
+        - Name: QueueName #API名
+          Value: test
+      MetricName: ApproximateAgeOfOldestMessage
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 30  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+# --------------------------------------SNS---------------------------------
+  SNSTopicErrorID:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Error notification
+      # KmsMasterKeyId: String
+      # Subscription:
+      #   - Endpoint: zicksick0706@outlook.jp
+      #     Protocol: email
+      # Tags:
+      #   - Tag
+      TopicName: ErrorTopic
+
+  snssubscriptionID:
+    Type: AWS::SNS::Subscription
+    Properties:
+      # DeliveryPolicy: Json
+      Endpoint: zicksick0706@outlook.jp
+      # FilterPolicy: Json
+      Protocol: email
+      # RawMessageDelivery: Boolean
+      # RedrivePolicy: Json
+      # Region: String
+      # SubscriptionRoleArn: String
+      TopicArn: !Ref SNSTopicErrorID

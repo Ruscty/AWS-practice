@@ -6,22 +6,33 @@ Parameters:
 #--------------------------------------------環境変数--------------------------------------------
   WEBACLNAME:
     Type: String
+    Default: WAFTEST
   LINECHANNELSECRET:
     Type: String
+    Default: test
   LINECHANNELACCESSTOKEN:
     Type: String
-#--------------------------------------------SQSパラメータ--------------------------------------------
-  QUENAME:
-    # Description: "add .fifo on the end"
+    Default: test
+#--------------------------------------------Route53パラメータ--------------------------------------------
+  DomainName:
     Type: String
+    Default: example.com
+#--------------------------------------------SQSパラメータ--------------------------------------------
+  QUEUENAME:
+    Description: "add .fifo on the end"
+    Type: String
+    Default: sqstest
 #--------------------------------------------S3パラメータ--------------------------------------------
   LOGBUCKETNAME:
     Type: String
+    Default: example-log-13579
   HTMLBUCKETNAME:
     Type: String
+    Default: example-html-13579
 #--------------------------------------------DynamoDBパラメータ--------------------------------------------
   TABLENAME:
     Type: String
+    Default: testtable
   # READCAPACITYUNIT:
   #   Description: default 5
   #   Type: Number
@@ -40,27 +51,37 @@ Parameters:
 #--------------------------------------------Lambdaパラメータ--------------------------------------------
   InputLambdaFunctionName:
     Type: String
+    Default: inputlam
   OutputLambdaFunctionName:
     Type: String
+    Default: outputlam
   LIFFLambdaFunctionName:
     Type: String
+    Default: lifflam
   NotificationLambdaFunctionName:
     Type: String
+    Default: notlam
   ErrorLambdaFunctionName:
     Type: String
+    Default: errlam
   LogLambdaFunctionName:
     Type: String
+    Default: loglam
 
 #--------------------------------------------APIGatewayパラメータ--------------------------------------------
   MessageAPIGatewayName:
     Type: String
+    Default: msgapi
   MessageAPIGatewayStageName:
     Type: String
+    Default: msgapistagetest
 
   LIFFAPIGatewayName:
     Type: String
+    Default: liffapi
   LIFFAPIGatewayStageName:
     Type: String
+    Default: liffapistagetest
 
   ApiEndpoint:
     Type: String
@@ -115,15 +136,29 @@ Parameters:
     Type: String
     Default: logrolepolicy
 
+#--------------------------------------------SNSパラメータ--------------------------------------------
+  snstopicname:
+    Type: String
+    Default: ErrorTopic
+  snssubscriptionemail:
+    Type: String
+    Default: XXXX@XXXX.com
+  
+
 #--------------------------------------------パラメータのソート--------------------------------------------
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       -
         Label:
+          default: "Route53 Configuration"
+        Parameters:
+          - DomainName
+      -
+        Label:
           default: "SQS Configuration"
         Parameters:
-          - QUENAME
+          - QUEUENAME
       -
         Label:
           default: "S3 Configuration"
@@ -172,9 +207,20 @@ Metadata:
           - LIFFAPIGatewayStageName
           - ApiEndpoint
           - ApiValidate
+      -
+        Label:
+          default: "SNS Configuration"
+        Parameters:
+          - snstopicname
 
 #--------------------------------------------リソース--------------------------------------------
 Resources: 
+  hostedzoneID:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      HostedZoneConfig: 
+        Comment: 'My hosted zone for example.com'
+      Name: !Ref DomainName
 #--------------------------------------------WAF--------------------------------------------
   wafwebaclID:
     Type: AWS::WAFv2::WebACL
@@ -305,8 +351,8 @@ Resources:
   sqsID:
     Type: AWS::SQS::Queue
     Properties:
-      # FifoQueue: true
-      QueueName: !Ref QUENAME
+      FifoQueue: true
+      QueueName: !Ref QUEUENAME
       Tags:
         - Key: management
           Value: dev
@@ -320,6 +366,8 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: 'AES256'
       BucketName: !Ref HTMLBUCKETNAME
+      MetricsConfigurations:
+        - Id: !Sub ${HTMLBUCKETNAME}-metricsfilter
       Tags:
         - Key: management
           Value: dev
@@ -340,6 +388,8 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: 'AES256'
       BucketName: !Ref LOGBUCKETNAME
+      MetricsConfigurations:
+        - Id: !Sub ${LOGBUCKETNAME}-metricsfilter
       LifecycleConfiguration:
         Rules: 
         - ExpirationInDays: 31
@@ -450,7 +500,7 @@ Resources:
       ClientCertificateId: !Ref inputClientCertificateID
       DeploymentId: !Ref messageapigatewaydeployID
       RestApiId: !Ref messageapigatewayID
-      StageName: !Ref MessageAPIGatewayStageName
+      # StageName: !Ref MessageAPIGatewayStageName
       Tags:
         - Key: management
           Value: dev
@@ -462,8 +512,12 @@ Resources:
     Type: AWS::ApiGateway::Deployment
     Properties:
       RestApiId: !Ref messageapigatewayID
+      StageDescription:
+        MetricsEnabled: true
+      StageName: !Ref MessageAPIGatewayStageName
     DependsOn:
       - messageapigatewaymethodID
+
 
 #--------------------------------------------Lambda1--------------------------------------------
   #IAMポリシー
@@ -516,8 +570,8 @@ Resources:
           LINE_CHANNEL_ACCESS_TOKEN: !Ref LINECHANNELACCESSTOKEN
           QUEUE_URL: !Ref sqsID
       Code:
-        S3Bucket: ruscty-bucket
-        S3Key: nodejs/input.zip
+        S3Bucket: XXXX-bucket
+        S3Key: XXXX/XXXX.zip
 
       Tags:
         - Key: management
@@ -584,8 +638,8 @@ Resources:
           LINE_CHANNEL_ACCESS_TOKEN: !Ref LINECHANNELACCESSTOKEN
           QUEUE_URL: !Ref sqsID
       Code:
-        S3Bucket: ruscty-bucket
-        S3Key: nodejs/output.zip
+        S3Bucket: XXXX-bucket
+        S3Key: XXXX/XXXX.zip
       Tags:
         - Key: management
           Value: dev
@@ -657,7 +711,7 @@ Resources:
       ClientCertificateId: !Ref liffClientCertificateID
       DeploymentId: !Ref liffapigatewaydeployID
       RestApiId: !Ref liffapigatewayID
-      StageName: !Ref LIFFAPIGatewayStageName
+      # StageName: !Ref LIFFAPIGatewayStageName
       Tags:
         - Key: management
           Value: dev
@@ -669,8 +723,12 @@ Resources:
     Type: AWS::ApiGateway::Deployment
     Properties:
       RestApiId: !Ref liffapigatewayID
+      StageDescription:
+        MetricsEnabled: true
+      StageName: !Ref LIFFAPIGatewayStageName
     DependsOn:
       - liffapigatewaymethodID
+
 
 #--------------------------------------------Lambda3--------------------------------------------
   #IAMポリシー
@@ -792,8 +850,8 @@ Resources:
         Variables:
           LINE_CHANNEL_SECRET: !Ref LINECHANNELSECRET
       Code:
-        S3Bucket: ruscty-bucket
-        S3Key: nodejs/liff.zip
+        S3Bucket: XXXX-bucket
+        S3Key: XXXX/XXXX.zip
 
       Tags:
         - Key: management
@@ -841,8 +899,8 @@ Resources:
       Role: !GetAtt notificationlambdaroleID.Arn
       Runtime: nodejs14.x
       Code:
-        S3Bucket: ruscty-bucket
-        S3Key: nodejs/notification.zip
+        S3Bucket: XXXX-bucket
+        S3Key: XXXX/XXXX.zip
       Tags:
         - Key: management
           Value: dev
@@ -901,8 +959,8 @@ Resources:
       Role: !GetAtt errorlambdaroleID.Arn
       Runtime: nodejs14.x
       Code:
-        S3Bucket: ruscty-bucket
-        S3Key: nodejs/error.zip
+        S3Bucket: XXXX-bucket
+        S3Key: XXXX/XXXX.zip
       Tags:
         - Key: management
           Value: dev
@@ -950,10 +1008,284 @@ Resources:
       Role: !GetAtt loglambdaroleID.Arn
       Runtime: nodejs14.x
       Code:
-        S3Bucket: ruscty-bucket
-        S3Key: nodejs/log.zip
+        S3Bucket: XXXX-bucket
+        S3Key: XXXX/XXXX.zip
       Tags:
         - Key: management
           Value: dev
+#--------------------------------------------cloudwatch(Alarm)--------------------------------------------
+# ------------------------------------------------------APIGateway(alarm)-----------------------------------------------------
+  AlarmMessageApi5XXError:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: MessageApi5XXError
+      Namespace: AWS/ApiGateway
+      Dimensions:
+        - Name: ApiName #API名
+          Value: !Ref MessageAPIGatewayName
+        - Name: Stage #ステージ名
+          Value: !Ref MessageAPIGatewayStageName
+      MetricName: 5XXError
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
 
-  
+  AlarmMessageApi4XXError:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: MessageApi4XXError
+      Namespace: AWS/ApiGateway
+      Dimensions:
+        - Name: ApiName #API名
+          Value: !Ref MessageAPIGatewayName
+        - Name: Stage #ステージ名
+          Value: !Ref MessageAPIGatewayStageName
+      MetricName: 4XXError
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+  AlarmLiffApi5XXError:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: LiffApi5XXError
+      Namespace: AWS/ApiGateway
+      Dimensions:
+        - Name: ApiName #API名
+          Value: !Ref LIFFAPIGatewayName
+        - Name: Stage #ステージ名
+          Value: !Ref LIFFAPIGatewayStageName
+      MetricName: 5XXError
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+  AlarmliffApi4XXError:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: LiffApi4XXError
+      Namespace: AWS/ApiGateway
+      Dimensions:
+        - Name: ApiName #API名
+          Value: !Ref LIFFAPIGatewayName
+        - Name: Stage #ステージ名
+          Value: !Ref LIFFAPIGatewayStageName
+      MetricName: 4XXError
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+  # レイテンシー
+  # AlarmMessageLatencyError:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmName: LatencyError
+  #     Namespace: AWS/ApiGateway
+  #     Dimensions:
+  #       - Name: ApiName #API名
+  #         Value: input-API 
+  #       - Name: Stage #ステージ名
+  #         Value: default
+  #     MetricName: Latency
+  #     ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+  #     Period: 60  # 期間[s]
+  #     EvaluationPeriods: 1  # 閾値を超えた回数
+  #     Statistic: Maximum  # 最大
+  #     Threshold: 1  # 閾値
+  #     AlarmActions:
+  #       - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+# ------------------------------------------------------DynamoDB(alarm)-----------------------------------------------------
+  DynamoDBGSISystemErrorAlarmID:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: 'DynamoDBGSISystemErrorAlarm'
+      AlarmDescription: 'Alarm when GSI System Error exceed 2% of total number of read requests'
+      AlarmActions:
+        - !Ref SNSTopicErrorID
+      Metrics:
+        - Id: e1
+          Expression: 'm1/(m2+m3) * 100'
+          Label: GSISystemError
+        - Id: m1
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: SystemErrors
+              Dimensions:
+                - Name: TableName
+                  Value: !Ref TABLENAME
+            Period: 60
+            Stat: 'SampleCount'
+            Unit: 'Count'
+          ReturnData: False
+        - Id: m2
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: ConsumedReadCapacityUnits
+              Dimensions:
+                - Name: TableName
+                  Value: !Ref TABLENAME
+            Period: 60
+            Stat: SampleCount
+            Unit: Count
+          ReturnData: False
+        - Id: m3
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: ConsumedWriteCapacityUnits
+              Dimensions:
+                - Name: TableName
+                  Value: !Ref TABLENAME
+            Period: 60
+            Stat: SampleCount
+            Unit: Count
+          ReturnData: False
+      EvaluationPeriods: 2
+      Threshold: 2.0
+      ComparisonOperator: GreaterThanThreshold
+
+
+  DynamoDBGSIUserErrorAlarmID:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: 'DynamoDBGSIUserErrorAlarm'
+      AlarmDescription: 'Alarm when GSI User Error exceed 2% of total number of read requests'
+      AlarmActions:
+        - !Ref SNSTopicErrorID
+      Metrics:
+        - Id: e1
+          Expression: 'm1/(m2+m3) * 100'
+          Label: GSISystemError
+        - Id: m1
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: UserErrors
+              Dimensions:
+                - Name: TableName
+                  Value: !Ref TABLENAME
+            Period: 60
+            Stat: 'SampleCount'
+            Unit: 'Count'
+          ReturnData: False
+        - Id: m2
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: ConsumedReadCapacityUnits
+              Dimensions:
+                - Name: TableName
+                  Value: !Ref TABLENAME
+            Period: 60
+            Stat: SampleCount
+            Unit: Count
+          ReturnData: False
+        - Id: m3
+          MetricStat:
+            Metric:
+              Namespace: AWS/DynamoDB
+              MetricName: ConsumedWriteCapacityUnits
+              Dimensions:
+                - Name: TableName
+                  Value: !Ref TABLENAME
+            Period: 60
+            Stat: SampleCount
+            Unit: Count
+          ReturnData: False
+      EvaluationPeriods: 2
+      Threshold: 2.0
+      ComparisonOperator: GreaterThanThreshold
+# ------------------------------------------------------S3(alarm)-----------------------------------------------------
+  S34XXErrorsID:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: S3 4xxErrors
+      Namespace: AWS/S3
+      Dimensions:
+        - Name: BucketName #バケット名
+          Value: !Ref HTMLBUCKETNAME
+        - Name:  FilterId #フィルター
+          Value: !Sub ${HTMLBUCKETNAME}-metricsfilter
+      MetricName: 4xxErrors
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+  S35XXErrorsID:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: S3 5xxErrors
+      Namespace: AWS/S3
+      Dimensions:
+        - Name: BucketName #バケット名
+          Value: !Ref HTMLBUCKETNAME
+        - Name:  FilterId #フィルター
+          Value: !Sub ${LOGBUCKETNAME}-metricsfilter
+      MetricName: 5xxErrors
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 1  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+# ------------------------------------------------------SQS(alarm)-----------------------------------------------------
+  AlarmSQSError:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: SQSError
+      Namespace: AWS/SQS
+      Dimensions:
+        - Name: QueueName #API名
+          Value: !Ref QUEUENAME
+      MetricName: ApproximateAgeOfOldestMessage
+      ComparisonOperator: GreaterThanOrEqualToThreshold  # 閾値以上
+      Period: 60  # 期間[s]
+      EvaluationPeriods: 1  # 閾値を超えた回数
+      Statistic: Maximum  # 最大
+      Threshold: 30  # 閾値
+      AlarmActions:
+        - !Ref SNSTopicErrorID  # アラーム発生時のアクション
+
+#--------------------------------------------SNS--------------------------------------------
+  SNSTopicErrorID:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Error notification
+      # KmsMasterKeyId: String
+      # Subscription:
+      #   - Endpoint: XXXX@XXXX.com
+      #     Protocol: email
+      Tags:
+        - Key: management
+          Value: dev
+      TopicName: ErrorTopic
+
+  snssubscriptionID:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref snssubscriptionemail
+      Protocol: email
+      TopicArn: !Ref SNSTopicErrorID
